@@ -82,12 +82,35 @@ func (s *Store) CreateExecution(_ context.Context, execution domain.CalibrationE
 	if _, exists := s.executions[execution.ID]; exists {
 		return domain.ErrDuplicate
 	}
-	s.executions[execution.ID] = execution
-	root := execution.PreviousID
+	root := execution.RootID
 	if root.Empty() {
 		root = execution.ID
 	}
+	execution.RootID = root
+	s.executions[execution.ID] = execution
 	s.executionRoots[root] = append(s.executionRoots[root], execution.ID)
+	s.executionHeads[root] = execution.ID
+	return nil
+}
+
+func (s *Store) StageExecutionRevision(_ context.Context, execution domain.CalibrationExecution) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if execution.PreviousID.Empty() || execution.RootID.Empty() {
+		return domain.NewValidationError("revision", "root and previous execution are required")
+	}
+	if _, exists := s.executions[execution.ID]; exists {
+		return domain.ErrDuplicate
+	}
+	s.executions[execution.ID] = execution
+	return nil
+}
+
+func (s *Store) LinkExecutionRevision(_ context.Context, execution domain.CalibrationExecution) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.executionRoots[execution.RootID] = append(s.executionRoots[execution.RootID], execution.ID)
+	s.executionHeads[execution.RootID] = execution.ID
 	return nil
 }
 
@@ -104,12 +127,15 @@ func (s *Store) GetExecution(_ context.Context, id domain.ID) (domain.Calibratio
 func (s *Store) ListExecutionVersions(_ context.Context, id domain.ID) ([]domain.CalibrationExecution, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	ids := s.executionRoots[id]
-	if len(ids) == 0 {
-		if execution, ok := s.executions[id]; ok && !execution.PreviousID.Empty() {
-			ids = s.executionRoots[execution.PreviousID]
-		}
+	execution, ok := s.executions[id]
+	if !ok {
+		return nil, domain.ErrNotFound
 	}
+	root := execution.RootID
+	if root.Empty() {
+		root = execution.ID
+	}
+	ids := s.executionRoots[root]
 	if len(ids) == 0 {
 		return nil, domain.ErrNotFound
 	}
@@ -117,6 +143,6 @@ func (s *Store) ListExecutionVersions(_ context.Context, id domain.ID) ([]domain
 	for _, executionID := range ids {
 		result = append(result, s.executions[executionID])
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
+	sort.Slice(result, func(i, j int) bool { return result[i].Version < result[j].Version })
 	return result, nil
 }

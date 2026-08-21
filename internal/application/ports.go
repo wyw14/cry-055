@@ -33,6 +33,8 @@ type CalibrationRepository interface {
 	GetPlan(context.Context, domain.ID) (domain.CalibrationPlan, error)
 	FindOpenPlan(context.Context, domain.ID, domain.ID) (domain.CalibrationPlan, error)
 	CreateExecution(context.Context, domain.CalibrationExecution) error
+	StageExecutionRevision(context.Context, domain.CalibrationExecution) error
+	LinkExecutionRevision(context.Context, domain.CalibrationExecution) error
 	GetExecution(context.Context, domain.ID) (domain.CalibrationExecution, error)
 	ListExecutionVersions(context.Context, domain.ID) ([]domain.CalibrationExecution, error)
 }

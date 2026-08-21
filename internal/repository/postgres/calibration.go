@@ -61,15 +61,29 @@ func (s *Store) FindOpenPlan(ctx context.Context, instrumentID, itemID domain.ID
 	return decode[domain.CalibrationPlan](data)
 }
 func (s *Store) CreateExecution(ctx context.Context, value domain.CalibrationExecution) error {
+	root := value.RootID
+	if root.Empty() {
+		root = value.ID
+	}
+	value.RootID = root
+	return s.WithinTransaction(ctx, func(tx context.Context) error {
+		if err := s.StageExecutionRevision(tx, value); err != nil {
+			return err
+		}
+		_, err := s.exec(tx, `INSERT INTO calibration_execution_heads(root_id,head_id) VALUES($1,$2)`, root, value.ID)
+		return translate(err)
+	})
+}
+func (s *Store) StageExecutionRevision(ctx context.Context, value domain.CalibrationExecution) error {
 	data, err := encode(value)
 	if err != nil {
 		return err
 	}
-	root := value.PreviousID
-	if root.Empty() {
-		root = value.ID
-	}
-	_, err = s.exec(ctx, `INSERT INTO calibration_executions(id,root_id,instrument_id,item_id,conclusion,version,data) VALUES($1,$2,$3,$4,$5,$6,$7)`, value.ID, root, value.InstrumentID, value.ItemID, value.Conclusion, value.Version, data)
+	_, err = s.exec(ctx, `INSERT INTO calibration_executions(id,root_id,instrument_id,item_id,conclusion,version,data) VALUES($1,$2,$3,$4,$5,$6,$7)`, value.ID, value.RootID, value.InstrumentID, value.ItemID, value.Conclusion, value.Version, data)
+	return translate(err)
+}
+func (s *Store) LinkExecutionRevision(ctx context.Context, value domain.CalibrationExecution) error {
+	_, err := s.exec(ctx, `INSERT INTO calibration_execution_heads(root_id,head_id) VALUES($1,$2) ON CONFLICT(root_id) DO UPDATE SET head_id=EXCLUDED.head_id`, value.RootID, value.ID)
 	return translate(err)
 }
 func (s *Store) GetExecution(ctx context.Context, id domain.ID) (domain.CalibrationExecution, error) {
@@ -81,7 +95,7 @@ func (s *Store) GetExecution(ctx context.Context, id domain.ID) (domain.Calibrat
 	return decode[domain.CalibrationExecution](data)
 }
 func (s *Store) ListExecutionVersions(ctx context.Context, id domain.ID) ([]domain.CalibrationExecution, error) {
-	rows, err := s.query(ctx, `SELECT data FROM calibration_executions WHERE root_id=COALESCE((SELECT root_id FROM calibration_executions WHERE id=$1),$1) ORDER BY created_at`, id)
+	rows, err := s.query(ctx, `SELECT data FROM calibration_executions WHERE root_id=COALESCE((SELECT root_id FROM calibration_executions WHERE id=$1),$1) ORDER BY version,created_at`, id)
 	if err != nil {
 		return nil, translate(err)
 	}

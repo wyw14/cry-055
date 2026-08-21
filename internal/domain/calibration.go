@@ -32,6 +32,7 @@ func NewMeasurement(point string, expected, actual, tolerance float64) (Measurem
 
 type CalibrationExecution struct {
 	ID            ID                    `json:"id"`
+	RootID        ID                    `json:"root_id"`
 	InstrumentID  ID                    `json:"instrument_id"`
 	ItemID        ID                    `json:"item_id"`
 	PlanID        ID                    `json:"plan_id"`
@@ -62,8 +63,9 @@ func NewExecution(instrumentID, itemID, planID, executorID ID, measurements []Me
 			break
 		}
 	}
+	id := NewID("exec")
 	return CalibrationExecution{
-		ID: NewID("exec"), InstrumentID: instrumentID, ItemID: itemID, PlanID: planID,
+		ID: id, RootID: id, InstrumentID: instrumentID, ItemID: itemID, PlanID: planID,
 		ExecutorID: executorID, Measurements: append([]Measurement(nil), measurements...),
 		Conclusion: conclusion, CertificateID: certificateID, CompletedAt: completedAt.UTC(),
 		Version: 1, CreatedAt: now.UTC(),
@@ -90,6 +92,7 @@ func (e CalibrationExecution) Revise(measurements []Measurement, actor ID, now t
 	if err != nil {
 		return CalibrationExecution{}, err
 	}
+	revised.RootID = e.ID
 	revised.PreviousID = e.ID
 	return revised, nil
 }

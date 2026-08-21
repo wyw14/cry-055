@@ -110,8 +110,11 @@ func (s *ExecutionService) Revise(ctx context.Context, executionID, actorID doma
 	if err != nil {
 		return domain.CalibrationExecution{}, err
 	}
-	if err := s.repository.CreateExecution(ctx, revised); err != nil {
+	if err := s.repository.StageExecutionRevision(ctx, revised); err != nil {
 		return domain.CalibrationExecution{}, err
+	}
+	if err := s.repository.LinkExecutionRevision(ctx, revised); err != nil {
+		return domain.CalibrationExecution{}, fmt.Errorf("link calibration revision: %v", err)
 	}
 	return revised, nil
 }

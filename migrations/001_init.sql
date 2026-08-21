@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS calibration_plans (id text PRIMARY KEY, instrument_id
 CREATE UNIQUE INDEX IF NOT EXISTS plans_open_unique ON calibration_plans(instrument_id,item_id) WHERE status NOT IN ('completed','cancelled');
 CREATE TABLE IF NOT EXISTS calibration_executions (id text PRIMARY KEY, root_id text NOT NULL, instrument_id text NOT NULL REFERENCES instruments(id), item_id text NOT NULL REFERENCES calibration_items(id), conclusion text NOT NULL, version bigint NOT NULL, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS executions_root_idx ON calibration_executions(root_id,created_at);
+CREATE TABLE IF NOT EXISTS calibration_execution_heads (root_id text PRIMARY KEY, head_id text NOT NULL REFERENCES calibration_executions(id));
 CREATE TABLE IF NOT EXISTS nonconformances (id text PRIMARY KEY, instrument_id text NOT NULL REFERENCES instruments(id), status text NOT NULL, version bigint NOT NULL, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 CREATE UNIQUE INDEX IF NOT EXISTS nonconformances_open_unique ON nonconformances(instrument_id) WHERE status <> 'closed';
 CREATE TABLE IF NOT EXISTS certificates (id text PRIMARY KEY, number text NOT NULL UNIQUE, instrument_id text NOT NULL REFERENCES instruments(id), expires_at timestamptz NOT NULL, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
