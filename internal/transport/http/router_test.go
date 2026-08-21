@@ -18,6 +18,10 @@ import (
 )
 
 func testRouter(t *testing.T) (http.Handler, *memory.Store, domain.Instrument) {
+	return testRouterWithUsageRepository(t, nil)
+}
+
+func testRouterWithUsageRepository(t *testing.T, factory func(*memory.Store) application.InstrumentRepository) (http.Handler, *memory.Store, domain.Instrument) {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Date(2026, 8, 21, 8, 0, 0, 0, time.UTC)
@@ -38,11 +42,80 @@ func testRouter(t *testing.T) (http.Handler, *memory.Store, domain.Instrument) {
 	plans := application.NewPlanService(store, store, fixed)
 	executions := application.NewExecutionService(store, store, store, store, fixed)
 	nonconformance := application.NewNonconformanceService(store, store, store, store, fixed)
-	usage := application.NewUsageService(store, store, fixed, 30)
+	usageInstruments := application.InstrumentRepository(store)
+	if factory != nil {
+		usageInstruments = factory(store)
+	}
+	usage := application.NewUsageService(usageInstruments, store, fixed, 30)
 	alerts := application.NewAlertService(store, store, store, localnotify.New(), fixed)
 	reports := application.NewReportService(store, store, store, store)
 	router := NewRouter(Services{Catalog: catalog, Instruments: instruments, Plans: plans, Executions: executions, Nonconformance: nonconformance, Usage: usage, Alerts: alerts, Reports: reports}, Options{Logger: zap.NewNop(), RequestTimeout: time.Second})
 	return router, store, instrument
+}
+
+type cancellationGateInstrumentRepository struct {
+	application.InstrumentRepository
+	started chan struct{}
+	release chan struct{}
+}
+
+func (r *cancellationGateInstrumentRepository) GetInstrument(ctx context.Context, id domain.ID) (domain.Instrument, error) {
+	close(r.started)
+	<-r.release
+	if err := ctx.Err(); err != nil {
+		return domain.Instrument{}, err
+	}
+	return r.InstrumentRepository.GetInstrument(ctx, id)
+}
+
+func TestUsageCheckHTTPCancellationLeavesNoDecisionOrAudit(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	router, store, instrument := testRouterWithUsageRepository(t, func(store *memory.Store) application.InstrumentRepository {
+		return &cancellationGateInstrumentRepository{InstrumentRepository: store, started: started, release: release}
+	})
+
+	body, err := json.Marshal(map[string]any{"batch_number": "BATCH-CANCELLED", "operator_id": "operator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestContext, cancel := context.WithCancel(context.Background())
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/instruments/"+string(instrument.ID)+"/usage-checks", bytes.NewReader(body)).WithContext(requestContext)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Actor-ID", "operator")
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		router.ServeHTTP(response, request)
+		close(done)
+	}()
+
+	<-started
+	cancel()
+	close(release)
+	<-done
+
+	if response.Code != 499 {
+		t.Errorf("expected canceled request status 499, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["code"] != "REQUEST_CANCELED" {
+		t.Errorf("unexpected cancellation code: %v", payload["code"])
+	}
+	checks, err := store.ListUsageChecks(context.Background(), instrument.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audits, err := store.ListAudit(context.Background(), "instrument", instrument.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checks) != 0 || len(audits) != 0 {
+		t.Fatalf("canceled check leaked side effects: checks=%d audits=%d", len(checks), len(audits))
+	}
 }
 
 func TestUsageCheckHTTPBlocksOverdueCriticalInstrument(t *testing.T) {

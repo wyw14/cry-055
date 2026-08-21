@@ -66,6 +66,12 @@ type UsageRepository interface {
 	ListUsageChecks(context.Context, domain.ID) ([]domain.UsageCheck, error)
 }
 
+type UsageWorkflowRepository interface {
+	UsageRepository
+	AuditRepository
+	TransactionManager
+}
+
 type TransactionManager interface {
 	WithinTransaction(context.Context, func(context.Context) error) error
 }
