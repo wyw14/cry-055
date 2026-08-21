@@ -79,11 +79,30 @@ func (s *NonconformanceService) Restore(ctx context.Context, id domain.ID, actor
 		if err != nil {
 			return err
 		}
-		if err := nc.ConfirmRestoration(actor, comment, expected, s.clock.Now()); err != nil {
+		restorationActor := actor
+		metadata := MetadataFromContext(tx)
+		if !metadata.Actor.ID.Empty() {
+			restorationActor = metadata.Actor
+		}
+		snapshot := domain.NewRestorationSnapshot(instrument, nc, restorationActor, s.clock.Now())
+		decision, err := snapshot.Authorize()
+		if err != nil {
+			return err
+		}
+		if decision.Actor.ID != actor.ID {
+			return domain.ErrUnauthorized
+		}
+		if decision.RetestID != nc.RetestID {
+			return domain.ErrConflict
+		}
+		if decision.SourceStatus != instrument.Status {
+			return domain.ErrConflict
+		}
+		if err := nc.ConfirmRestoration(decision.Actor, comment, expected, s.clock.Now()); err != nil {
 			return err
 		}
 		instrumentExpected := instrument.Version
-		if err := instrument.ApplyStatus(domain.StatusQualified, "", instrumentExpected, s.clock.Now()); err != nil {
+		if err := instrument.ApplyStatus(decision.TargetStatus, "", instrumentExpected, s.clock.Now()); err != nil {
 			return err
 		}
 		if err := s.repository.UpdateNonconformance(tx, nc, expected); err != nil {

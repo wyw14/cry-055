@@ -17,6 +17,61 @@ const (
 	StatusReinspection InstrumentStatus = "reinspection"
 )
 
+type RestorationSnapshot struct {
+	Actor                Actor
+	InstrumentStatus     InstrumentStatus
+	EffectiveStatus      *InstrumentStatus
+	NonconformanceStatus NonconformanceStatus
+	RetestID             ID
+	CapturedAt           time.Time
+}
+
+type RestorationDecision struct {
+	Actor        Actor
+	SourceStatus InstrumentStatus
+	TargetStatus InstrumentStatus
+	RetestID     ID
+}
+
+func NewRestorationSnapshot(instrument Instrument, nonconformance Nonconformance, actor Actor, now time.Time) RestorationSnapshot {
+	snapshot := RestorationSnapshot{
+		Actor:                actor,
+		InstrumentStatus:     instrument.Status,
+		NonconformanceStatus: nonconformance.Status,
+		RetestID:             nonconformance.RetestID,
+		CapturedAt:           now.UTC(),
+	}
+	if !instrument.NextDueAt.IsZero() {
+		effective := DerivedStatus(instrument.Status, now, instrument.NextDueAt, 30)
+		snapshot.EffectiveStatus = &effective
+	}
+	return snapshot
+}
+
+func (s RestorationSnapshot) Authorize() (*RestorationDecision, error) {
+	if s.Actor.ID.Empty() || !s.Actor.HasRole("quality_manager") {
+		return nil, ErrUnauthorized
+	}
+	if s.NonconformanceStatus != NCRestorationReview || s.RetestID.Empty() {
+		return nil, fmt.Errorf("%w: restoration evidence is incomplete", ErrInvalidTransition)
+	}
+	if s.EffectiveStatus == nil {
+		return nil, fmt.Errorf("%w: effective status is unavailable", ErrInvalidTransition)
+	}
+	if s.InstrumentStatus != StatusReinspection || *s.EffectiveStatus != StatusReinspection {
+		return nil, fmt.Errorf("%w: instrument is not awaiting restoration", ErrInvalidTransition)
+	}
+	if err := RequireTransition(s.InstrumentStatus, StatusQualified); err != nil {
+		return nil, err
+	}
+	return &RestorationDecision{
+		Actor:        s.Actor,
+		SourceStatus: s.InstrumentStatus,
+		TargetStatus: StatusQualified,
+		RetestID:     s.RetestID,
+	}, nil
+}
+
 func (s InstrumentStatus) Valid() bool {
 	switch s {
 	case StatusPending, StatusQualified, StatusDueSoon, StatusOverdue, StatusUnqualified, StatusDisabled, StatusReinspection:
