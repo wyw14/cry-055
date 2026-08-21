@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -42,14 +43,22 @@ func (s *AlertService) ScanInstrument(ctx context.Context, id domain.ID, warning
 	if err != nil {
 		return domain.Alert{}, false, err
 	}
-	stored, created, err := s.alerts.UpsertAlert(ctx, alert)
+	stored, err := s.alerts.FindAlertByDeduplication(ctx, alert.Deduplication)
+	if err == nil {
+		return stored, false, nil
+	}
+	if !errors.Is(err, domain.ErrNotFound) {
+		return domain.Alert{}, false, err
+	}
+	audit, err := alertScanAudit(alert, s.clock.Now())
 	if err != nil {
 		return domain.Alert{}, false, err
 	}
-	if created {
-		_ = s.notifier.Notify(ctx, stored)
+	if err := s.alerts.RecordAlertScan(ctx, alert, audit); err != nil {
+		return domain.Alert{}, false, err
 	}
-	return stored, created, nil
+	_ = s.notifier.Notify(ctx, alert)
+	return alert, true, nil
 }
 
 func (s *AlertService) ScanCertificates(ctx context.Context, horizonDays int) ([]domain.Alert, error) {
@@ -69,16 +78,38 @@ func (s *AlertService) ScanCertificates(ctx context.Context, horizonDays int) ([
 		if err != nil {
 			return nil, err
 		}
-		stored, created, err := s.alerts.UpsertAlert(ctx, alert)
+		stored, err := s.alerts.FindAlertByDeduplication(ctx, alert.Deduplication)
+		if err == nil {
+			result = append(result, stored)
+			continue
+		}
+		if !errors.Is(err, domain.ErrNotFound) {
+			return nil, err
+		}
+		audit, err := alertScanAudit(alert, now)
 		if err != nil {
 			return nil, err
 		}
-		if created {
-			_ = s.notifier.Notify(ctx, stored)
+		if err := s.alerts.RecordAlertScan(ctx, alert, audit); err != nil {
+			return nil, err
 		}
-		result = append(result, stored)
+		_ = s.notifier.Notify(ctx, alert)
+		result = append(result, alert)
 	}
 	return result, nil
+}
+
+func alertScanAudit(alert domain.Alert, now time.Time) (domain.AuditEvent, error) {
+	return domain.NewAuditEvent(
+		"alert-scan:"+alert.Deduplication,
+		"system-alert-scanner",
+		"alert.created",
+		"instrument",
+		alert.InstrumentID,
+		nil,
+		alert,
+		now,
+	)
 }
 
 func (s *AlertService) List(ctx context.Context, page domain.PageRequest) (domain.Page[domain.Alert], error) {

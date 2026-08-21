@@ -90,7 +90,26 @@ func (s *Store) ListExpiringCertificates(_ context.Context, from, to time.Time) 
 	return result, nil
 }
 
-func (s *Store) UpsertAlert(_ context.Context, value domain.Alert) (domain.Alert, bool, error) {
+func (s *Store) FindAlertByDeduplication(_ context.Context, key string) (domain.Alert, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	id, exists := s.alertDedup[key]
+	if !exists {
+		return domain.Alert{}, domain.ErrNotFound
+	}
+	return s.alerts[id], nil
+}
+
+func (s *Store) RecordAlertScan(_ context.Context, value domain.Alert, audit domain.AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.alerts[value.ID] = value
+	s.alertDedup[value.Deduplication] = value.ID
+	s.audits = append(s.audits, audit)
+	return nil
+}
+
+func (s *Store) CommitAlertScan(_ context.Context, value domain.Alert, audit domain.AuditEvent) (domain.Alert, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if id, exists := s.alertDedup[value.Deduplication]; exists {
@@ -98,6 +117,7 @@ func (s *Store) UpsertAlert(_ context.Context, value domain.Alert) (domain.Alert
 	}
 	s.alerts[value.ID] = value
 	s.alertDedup[value.Deduplication] = value.ID
+	s.audits = append(s.audits, audit)
 	return value, true, nil
 }
 

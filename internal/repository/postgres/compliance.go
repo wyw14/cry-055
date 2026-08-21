@@ -81,25 +81,54 @@ func (s *Store) ListExpiringCertificates(ctx context.Context, from, to time.Time
 	}
 	return result, rows.Err()
 }
-func (s *Store) UpsertAlert(ctx context.Context, value domain.Alert) (domain.Alert, bool, error) {
+func (s *Store) FindAlertByDeduplication(ctx context.Context, key string) (domain.Alert, error) {
+	var data []byte
+	err := s.queryRow(ctx, `SELECT data FROM alerts WHERE deduplication_key=$1`, key).Scan(&data)
+	if err != nil {
+		return domain.Alert{}, translate(err)
+	}
+	return decode[domain.Alert](data)
+}
+func (s *Store) RecordAlertScan(ctx context.Context, value domain.Alert, audit domain.AuditEvent) error {
 	data, err := encode(value)
 	if err != nil {
-		return domain.Alert{}, false, err
+		return err
 	}
-	tag, err := s.exec(ctx, `INSERT INTO alerts(id,deduplication_key,acknowledged_at,data) VALUES($1,$2,NULL,$3) ON CONFLICT(deduplication_key) DO NOTHING`, value.ID, value.Deduplication, data)
+	auditData, err := encode(audit)
 	if err != nil {
-		return domain.Alert{}, false, translate(err)
+		return err
 	}
-	if tag.RowsAffected() == 1 {
-		return value, true, nil
-	}
-	var existing []byte
-	err = s.queryRow(ctx, `SELECT data FROM alerts WHERE deduplication_key=$1`, value.Deduplication).Scan(&existing)
-	if err != nil {
-		return domain.Alert{}, false, translate(err)
-	}
-	stored, err := decode[domain.Alert](existing)
-	return stored, false, err
+	return s.WithinTransaction(ctx, func(tx context.Context) error {
+		if _, err := s.exec(tx, `INSERT INTO alerts(id,deduplication_key,acknowledged_at,data) VALUES($1,$2,NULL,$3) ON CONFLICT(deduplication_key) DO NOTHING`, value.ID, value.Deduplication, data); err != nil {
+			return translate(err)
+		}
+		_, err := s.exec(tx, `INSERT INTO audit_events(id,entity_type,entity_id,created_at,data) VALUES($1,$2,$3,$4,$5)`, audit.ID, audit.EntityType, audit.EntityID, audit.CreatedAt, auditData)
+		return translate(err)
+	})
+}
+func (s *Store) CommitAlertScan(ctx context.Context, value domain.Alert, audit domain.AuditEvent) (domain.Alert, bool, error) {
+	var stored domain.Alert
+	created := false
+	err := s.WithinTransaction(ctx, func(tx context.Context) error {
+		data, err := encode(value)
+		if err != nil {
+			return err
+		}
+		tag, err := s.exec(tx, `INSERT INTO alerts(id,deduplication_key,acknowledged_at,data) VALUES($1,$2,NULL,$3) ON CONFLICT(deduplication_key) DO NOTHING`, value.ID, value.Deduplication, data)
+		if err != nil {
+			return translate(err)
+		}
+		if tag.RowsAffected() == 0 {
+			stored, err = s.FindAlertByDeduplication(tx, value.Deduplication)
+			return err
+		}
+		if err := s.AppendAudit(tx, audit); err != nil {
+			return err
+		}
+		stored, created = value, true
+		return nil
+	})
+	return stored, created, err
 }
 func (s *Store) AcknowledgeAlert(ctx context.Context, value domain.Alert) error {
 	data, err := encode(value)
