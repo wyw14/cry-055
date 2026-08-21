@@ -65,7 +65,7 @@ func (s *PlanService) ApplyScheduleRule(ctx context.Context, id domain.ID, rule 
 	if err != nil {
 		return domain.CalibrationPlan{}, err
 	}
-	application, changed, err := rule.Evaluate(plan, lastQualifiedAt, plan.DueAt)
+	application, changed, err := rule.Evaluate(plan, lastQualifiedAt, s.clock.Now())
 	if err != nil {
 		return domain.CalibrationPlan{}, err
 	}

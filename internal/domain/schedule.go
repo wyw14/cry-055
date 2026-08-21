@@ -50,6 +50,16 @@ func (r ScheduleRule) Evaluate(plan CalibrationPlan, lastQualifiedAt, asOf time.
 	if plan.InstrumentID != r.InstrumentID || plan.ItemID != r.ItemID {
 		return ScheduleApplication{}, false, NewValidationError("schedule_rule", "rule does not target this plan")
 	}
+	// A future-dated rule must not take effect before its effective date, so a
+	// manual reschedule made before that date is preserved.
+	if asOf.Before(r.EffectiveAt) {
+		return ScheduleApplication{}, false, nil
+	}
+	// Re-applying the rule already active on the plan would only drift the
+	// version and due date, so treat it as a no-op.
+	if plan.ScheduleRuleID == r.ID {
+		return ScheduleApplication{}, false, nil
+	}
 	dueAt, err := r.NextDue(lastQualifiedAt)
 	if err != nil {
 		return ScheduleApplication{}, false, err
