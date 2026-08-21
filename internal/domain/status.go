@@ -41,10 +41,16 @@ func NewRestorationSnapshot(instrument Instrument, nonconformance Nonconformance
 		RetestID:             nonconformance.RetestID,
 		CapturedAt:           now.UTC(),
 	}
-	if !instrument.NextDueAt.IsZero() {
-		effective := DerivedStatus(instrument.Status, now, instrument.NextDueAt, 30)
-		snapshot.EffectiveStatus = &effective
-	}
+	// The derived status is well-defined without a next-due date for blocking
+	// states (disabled, unqualified, reinspection): DerivedStatus returns the
+	// current status unchanged, so a fully reviewed historical instrument that
+	// simply lacks scheduling info still has an effective status. Requiring a
+	// due date here would let missing scheduling info negate an already
+	// completed qualified retest, leaving the instrument stuck awaiting
+	// restoration. The Authorize checks below still enforce the actor role,
+	// restoration evidence, and status-order constraints independently.
+	effective := DerivedStatus(instrument.Status, now, instrument.NextDueAt, 30)
+	snapshot.EffectiveStatus = &effective
 	return snapshot
 }
 
