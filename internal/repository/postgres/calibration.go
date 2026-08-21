@@ -72,6 +72,14 @@ func (s *Store) CreateExecution(ctx context.Context, value domain.CalibrationExe
 	_, err = s.exec(ctx, `INSERT INTO calibration_executions(id,root_id,instrument_id,item_id,conclusion,version,data) VALUES($1,$2,$3,$4,$5,$6,$7)`, value.ID, root, value.InstrumentID, value.ItemID, value.Conclusion, value.Version, data)
 	return translate(err)
 }
+func (s *Store) UpdateExecution(ctx context.Context, value domain.CalibrationExecution, expected domain.Version) error {
+	data, err := encode(value)
+	if err != nil {
+		return err
+	}
+	_, err = s.exec(ctx, `UPDATE calibration_executions SET conclusion=$2,version=$3,data=$4 WHERE id=$1`, value.ID, value.Conclusion, value.Version, data)
+	return translate(err)
+}
 func (s *Store) GetExecution(ctx context.Context, id domain.ID) (domain.CalibrationExecution, error) {
 	var data []byte
 	err := s.queryRow(ctx, `SELECT data FROM calibration_executions WHERE id=$1`, id).Scan(&data)

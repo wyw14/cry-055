@@ -1,10 +1,25 @@
 package domain
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"time"
 )
+
+type ReviewFailure struct {
+	ExecutionID ID
+	Stage       string
+	Message     string
+}
+
+func (e ReviewFailure) Error() string {
+	return fmt.Sprintf("review execution %s failed during %s: %s", e.ExecutionID, e.Stage, e.Message)
+}
+
+func NewReviewFailure(executionID ID, stage string, err error) error {
+	return ReviewFailure{ExecutionID: executionID, Stage: stage, Message: err.Error()}
+}
 
 type CalibrationConclusion string
 

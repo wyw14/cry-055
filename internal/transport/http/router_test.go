@@ -36,7 +36,7 @@ func testRouter(t *testing.T) (http.Handler, *memory.Store, domain.Instrument) {
 	catalog := application.NewCatalogService(store, store, fixed)
 	instruments := application.NewInstrumentService(store, store, store, fixed)
 	plans := application.NewPlanService(store, store, fixed)
-	executions := application.NewExecutionService(store, store, store, store, fixed)
+	executions := application.NewExecutionService(store, store, store, store, store, fixed)
 	nonconformance := application.NewNonconformanceService(store, store, store, store, fixed)
 	usage := application.NewUsageService(store, store, fixed, 30)
 	alerts := application.NewAlertService(store, store, store, localnotify.New(), fixed)

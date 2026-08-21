@@ -10,7 +10,7 @@ import (
 
 func TestUnqualifiedExecutionBlocksInstrumentAndOpensCase(t *testing.T) {
 	fixture := newFixture(t)
-	service := NewExecutionService(fixture.store, fixture.store, fixture.store, fixture.store, fixture.clock)
+	service := NewExecutionService(fixture.store, fixture.store, fixture.store, fixture.store, fixture.store, fixture.clock)
 	measurement, _ := domain.NewMeasurement("span", 100, 101, fixture.item.Tolerance)
 	execution, err := service.Record(context.Background(), ExecutionInput{InstrumentID: fixture.instrument.ID, ItemID: fixture.item.ID, PlanID: fixture.plan.ID, ExecutorID: "operator", Measurements: []domain.Measurement{measurement}, CompletedAt: fixture.clock.Now()})
 	if err != nil {
@@ -37,7 +37,7 @@ func TestExecutionTransactionRollsBackOnDuplicateCase(t *testing.T) {
 	if err := fixture.store.CreateNonconformance(context.Background(), existing); err != nil {
 		t.Fatal(err)
 	}
-	service := NewExecutionService(fixture.store, fixture.store, fixture.store, fixture.store, fixture.clock)
+	service := NewExecutionService(fixture.store, fixture.store, fixture.store, fixture.store, fixture.store, fixture.clock)
 	measurement, _ := domain.NewMeasurement("span", 100, 101, fixture.item.Tolerance)
 	_, err := service.Record(context.Background(), ExecutionInput{InstrumentID: fixture.instrument.ID, ItemID: fixture.item.ID, PlanID: fixture.plan.ID, ExecutorID: "operator", Measurements: []domain.Measurement{measurement}, CompletedAt: fixture.clock.Now()})
 	if !errors.Is(err, domain.ErrDuplicate) {

@@ -23,11 +23,12 @@ type ExecutionService struct {
 	instruments  InstrumentRepository
 	nonconform   NonconformanceRepository
 	transactions TransactionManager
+	audits       AuditRepository
 	clock        Clock
 }
 
-func NewExecutionService(repository CalibrationRepository, instruments InstrumentRepository, nonconform NonconformanceRepository, transactions TransactionManager, clock Clock) *ExecutionService {
-	return &ExecutionService{repository: repository, instruments: instruments, nonconform: nonconform, transactions: transactions, clock: clock}
+func NewExecutionService(repository CalibrationRepository, instruments InstrumentRepository, nonconform NonconformanceRepository, transactions TransactionManager, audits AuditRepository, clock Clock) *ExecutionService {
+	return &ExecutionService{repository: repository, instruments: instruments, nonconform: nonconform, transactions: transactions, audits: audits, clock: clock}
 }
 
 func (s *ExecutionService) Record(ctx context.Context, input ExecutionInput) (domain.CalibrationExecution, error) {
@@ -119,13 +120,25 @@ func (s *ExecutionService) Revise(ctx context.Context, executionID, actorID doma
 func (s *ExecutionService) Review(ctx context.Context, executionID, reviewerID domain.ID, comment string) (domain.CalibrationExecution, error) {
 	execution, err := s.repository.GetExecution(ctx, executionID)
 	if err != nil {
-		return domain.CalibrationExecution{}, err
+		return domain.CalibrationExecution{}, domain.NewReviewFailure(executionID, "load", err)
 	}
+	expected := execution.Version
 	if err := execution.Review(reviewerID, comment, s.clock.Now()); err != nil {
-		return domain.CalibrationExecution{}, err
+		return domain.CalibrationExecution{}, domain.NewReviewFailure(executionID, "decision", err)
 	}
-	if err := s.repository.CreateExecution(ctx, execution); err != nil {
-		return domain.CalibrationExecution{}, err
+	if err := s.repository.UpdateExecution(context.Background(), execution, expected); err != nil {
+		return domain.CalibrationExecution{}, domain.NewReviewFailure(executionID, "execution update", err)
+	}
+	metadata := MetadataFromContext(ctx)
+	event, err := domain.NewAuditEvent(metadata.RequestID, reviewerID, "calibration_execution.review", "calibration_execution", execution.ID, nil, execution, s.clock.Now())
+	if err != nil {
+		return domain.CalibrationExecution{}, domain.NewReviewFailure(executionID, "audit creation", err)
+	}
+	err = s.transactions.WithinTransaction(ctx, func(tx context.Context) error {
+		return s.audits.AppendAudit(tx, event)
+	})
+	if err != nil {
+		return domain.CalibrationExecution{}, domain.NewReviewFailure(executionID, "audit append", err)
 	}
 	return execution, nil
 }

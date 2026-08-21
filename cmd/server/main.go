@@ -41,7 +41,7 @@ func main() {
 	catalog := application.NewCatalogService(store, store, systemClock)
 	instruments := application.NewInstrumentService(store, store, store, systemClock)
 	plans := application.NewPlanService(store, store, systemClock)
-	executions := application.NewExecutionService(store, store, store, store, systemClock)
+	executions := application.NewExecutionService(store, store, store, store, store, systemClock)
 	nonconformance := application.NewNonconformanceService(store, store, store, store, systemClock)
 	usage := application.NewUsageService(store, store, systemClock, 30)
 	alerts := application.NewAlertService(store, store, store, notifier, systemClock)

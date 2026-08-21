@@ -91,6 +91,16 @@ func (s *Store) CreateExecution(_ context.Context, execution domain.CalibrationE
 	return nil
 }
 
+func (s *Store) UpdateExecution(_ context.Context, execution domain.CalibrationExecution, expected domain.Version) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.executions[execution.ID]; !exists {
+		return domain.ErrNotFound
+	}
+	s.executions[execution.ID] = execution
+	return nil
+}
+
 func (s *Store) GetExecution(_ context.Context, id domain.ID) (domain.CalibrationExecution, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
