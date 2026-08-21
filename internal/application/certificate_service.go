@@ -88,13 +88,18 @@ func (s *CertificateService) ArchiveExpired(ctx context.Context, cutoff time.Tim
 		if err != nil {
 			return domain.CertificateArchive{}, err
 		}
-		defer reader.Close()
-
 		buffer := bytes.NewBuffer(scratch[:0])
-		if _, err := io.CopyBuffer(buffer, reader, scratch); err != nil {
-			return domain.CertificateArchive{}, err
+		_, copyErr := io.CopyBuffer(buffer, reader, scratch)
+		closeErr := reader.Close()
+		if copyErr != nil {
+			return domain.CertificateArchive{}, copyErr
 		}
-		entry, err := domain.NewCertificateArchiveEntry(certificate, archiveEntryFilename(certificate), buffer.Bytes())
+		if closeErr != nil {
+			return domain.CertificateArchive{}, closeErr
+		}
+		// Clone so each entry owns its bytes; the scratch buffer is reused
+		// across iterations and buffer.Bytes() would otherwise alias it.
+		entry, err := domain.NewCertificateArchiveEntry(certificate, archiveEntryFilename(certificate), bytes.Clone(buffer.Bytes()))
 		if err != nil {
 			return domain.CertificateArchive{}, err
 		}
