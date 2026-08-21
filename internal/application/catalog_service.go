@@ -43,14 +43,14 @@ func (s *CatalogService) CreateCalibrationItem(ctx context.Context, input Calibr
 	if err != nil {
 		return domain.CalibrationItem{}, err
 	}
-	if err := s.calibrations.CreateItem(ctx, value); err != nil {
-		return domain.CalibrationItem{}, err
-	}
 	standard, err := s.instruments.GetInstrument(ctx, input.ReferenceStandardID)
 	if err != nil {
 		return domain.CalibrationItem{}, err
 	}
 	if err := value.ValidateReferenceStandard(standard, s.clock.Now()); err != nil {
+		return domain.CalibrationItem{}, err
+	}
+	if err := s.calibrations.CreateItem(ctx, value); err != nil {
 		return domain.CalibrationItem{}, err
 	}
 	return value, nil

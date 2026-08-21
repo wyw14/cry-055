@@ -38,13 +38,13 @@ func NewCalibrationItem(code, name string, periodDays, warningDays int, toleranc
 	cleanModels := make([]string, 0, len(models))
 	seen := map[string]struct{}{}
 	for _, model := range models {
-		model = strings.TrimSpace(model)
-		if model == "" {
+		canonical := normalizeModel(model)
+		if canonical == "" {
 			continue
 		}
-		if _, exists := seen[model]; !exists {
-			seen[model] = struct{}{}
-			cleanModels = append(cleanModels, model)
+		if _, exists := seen[canonical]; !exists {
+			seen[canonical] = struct{}{}
+			cleanModels = append(cleanModels, canonical)
 		}
 	}
 	return CalibrationItem{
@@ -63,8 +63,9 @@ func (c CalibrationItem) AppliesTo(model string) bool {
 	if len(c.ApplicableModels) == 0 {
 		return true
 	}
+	canonical := normalizeModel(model)
 	for _, candidate := range c.ApplicableModels {
-		if candidate == model {
+		if candidate == canonical {
 			return true
 		}
 	}
@@ -79,4 +80,12 @@ func (c CalibrationItem) ValidateReferenceStandard(standard Instrument, _ time.T
 		return NewValidationError("reference_standard_id", "reference standard is not qualified")
 	}
 	return nil
+}
+
+// normalizeModel collapses the case and whitespace variants of an applicable
+// model into a single canonical form so that " pg-10 ", "PG-10" and "pg-10"
+// compare equal. Both NewCalibrationItem (on save) and AppliesTo (on lookup)
+// run input through this function, keeping stored and queried forms in lockstep.
+func normalizeModel(model string) string {
+	return strings.ToUpper(strings.TrimSpace(model))
 }
