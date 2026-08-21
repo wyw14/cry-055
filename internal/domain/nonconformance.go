@@ -37,6 +37,75 @@ type Nonconformance struct {
 	UpdatedAt       time.Time            `json:"updated_at"`
 }
 
+type RestorationEvidence struct {
+	CaseVersion        Version
+	ImpactRecorded     bool
+	RetestRequested    bool
+	QualifiedRetestID  ID
+	RestorationPending bool
+}
+
+type RestorationAuthorization struct {
+	CaseVersion Version
+	ActorID     ID
+	RetestID    ID
+	Comment     string
+}
+
+func (n Nonconformance) CollectRestorationEvidence() RestorationEvidence {
+	evidence := RestorationEvidence{
+		CaseVersion:       n.Version,
+		ImpactRecorded:    len(n.ImpactedBatches) > 0,
+		QualifiedRetestID: n.RetestID,
+	}
+	switch n.Status {
+	case NCAwaitingRetest:
+		evidence.RetestRequested = true
+	case NCRestorationReview:
+		evidence.RetestRequested = true
+		evidence.RestorationPending = true
+	}
+	return evidence
+}
+
+func (e RestorationEvidence) Authorize(actor Actor, comment string, expected Version) (RestorationAuthorization, error) {
+	if expected != e.CaseVersion {
+		return RestorationAuthorization{}, ErrConflict
+	}
+	if actor.ID.Empty() || !actor.HasRole("quality_manager") {
+		return RestorationAuthorization{}, ErrUnauthorized
+	}
+	comment = strings.TrimSpace(comment)
+	if comment == "" {
+		return RestorationAuthorization{}, NewValidationError("comment", "restoration comment is required")
+	}
+	if !e.ImpactRecorded || !e.RetestRequested {
+		return RestorationAuthorization{}, ErrInvalidTransition
+	}
+	return RestorationAuthorization{
+		CaseVersion: e.CaseVersion,
+		ActorID:     actor.ID,
+		RetestID:    e.QualifiedRetestID,
+		Comment:     comment,
+	}, nil
+}
+
+func (n *Nonconformance) ApplyRestoration(authorization RestorationAuthorization, now time.Time) error {
+	if n.Version != authorization.CaseVersion {
+		return ErrConflict
+	}
+	if n.Status != NCAwaitingRetest && n.Status != NCRestorationReview {
+		return ErrInvalidTransition
+	}
+	n.RetestID = authorization.RetestID
+	n.RestoreActorID = authorization.ActorID
+	n.RestoreComment = authorization.Comment
+	n.Status = NCClosed
+	n.Version = n.Version.Next()
+	n.UpdatedAt = now.UTC()
+	return nil
+}
+
 func NewNonconformance(instrumentID, executionID ID, reason string, now time.Time) (Nonconformance, error) {
 	if instrumentID.Empty() || executionID.Empty() {
 		return Nonconformance{}, NewValidationError("nonconformance", "instrument and execution are required")
@@ -111,19 +180,10 @@ func (n *Nonconformance) AttachRetest(retestID ID, qualified bool, expected Vers
 }
 
 func (n *Nonconformance) ConfirmRestoration(actor Actor, comment string, expected Version, now time.Time) error {
-	if n.Version != expected {
-		return ErrConflict
+	evidence := n.CollectRestorationEvidence()
+	authorization, err := evidence.Authorize(actor, comment, expected)
+	if err != nil {
+		return err
 	}
-	if n.Status != NCRestorationReview || !actor.HasRole("quality_manager") {
-		return ErrUnauthorized
-	}
-	if comment = strings.TrimSpace(comment); comment == "" {
-		return NewValidationError("comment", "restoration comment is required")
-	}
-	n.RestoreActorID = actor.ID
-	n.RestoreComment = comment
-	n.Status = NCClosed
-	n.Version = n.Version.Next()
-	n.UpdatedAt = now.UTC()
-	return nil
+	return n.ApplyRestoration(authorization, now)
 }
