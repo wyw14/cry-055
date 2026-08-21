@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"time"
 )
@@ -52,6 +54,57 @@ func (c Certificate) ExpiringWithin(now time.Time, days int) bool {
 		return false
 	}
 	return c.ExpiresAt.Sub(now) <= time.Duration(days)*24*time.Hour
+}
+
+type CertificateArchiveEntry struct {
+	CertificateID ID     `json:"certificate_id"`
+	Number        string `json:"number"`
+	Filename      string `json:"filename"`
+	Size          int64  `json:"size"`
+	SHA256        string `json:"sha256"`
+	Content       []byte `json:"-"`
+}
+
+func NewCertificateArchiveEntry(certificate Certificate, filename string, content []byte) (CertificateArchiveEntry, error) {
+	filename = strings.TrimSpace(filename)
+	if certificate.ID.Empty() || filename == "" {
+		return CertificateArchiveEntry{}, NewValidationError("archive_entry", "certificate and filename are required")
+	}
+	if len(content) == 0 {
+		return CertificateArchiveEntry{}, NewValidationError("archive_entry", "certificate content is empty")
+	}
+	digest := sha256.Sum256(content)
+	return CertificateArchiveEntry{
+		CertificateID: certificate.ID,
+		Number:        certificate.Number,
+		Filename:      filename,
+		Size:          int64(len(content)),
+		SHA256:        hex.EncodeToString(digest[:]),
+		Content:       content,
+	}, nil
+}
+
+type CertificateArchive struct {
+	ID            ID                        `json:"id"`
+	AttachmentKey string                    `json:"attachment_key"`
+	Entries       []CertificateArchiveEntry `json:"entries"`
+	CreatedAt     time.Time                 `json:"created_at"`
+}
+
+func NewCertificateArchive(entries []CertificateArchiveEntry, now time.Time) (CertificateArchive, error) {
+	if len(entries) == 0 {
+		return CertificateArchive{}, NewValidationError("archive", "at least one expired certificate is required")
+	}
+	return CertificateArchive{ID: NewID("certarc"), Entries: entries, CreatedAt: now.UTC()}, nil
+}
+
+func (a *CertificateArchive) Attach(key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return NewValidationError("attachment_key", "archive attachment is required")
+	}
+	a.AttachmentKey = key
+	return nil
 }
 
 type Supplier struct {
