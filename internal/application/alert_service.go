@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -43,22 +42,18 @@ func (s *AlertService) ScanInstrument(ctx context.Context, id domain.ID, warning
 	if err != nil {
 		return domain.Alert{}, false, err
 	}
-	stored, err := s.alerts.FindAlertByDeduplication(ctx, alert.Deduplication)
-	if err == nil {
-		return stored, false, nil
-	}
-	if !errors.Is(err, domain.ErrNotFound) {
-		return domain.Alert{}, false, err
-	}
 	audit, err := alertScanAudit(alert, s.clock.Now())
 	if err != nil {
 		return domain.Alert{}, false, err
 	}
-	if err := s.alerts.RecordAlertScan(ctx, alert, audit); err != nil {
+	stored, created, err := s.alerts.CommitAlertScan(ctx, alert, audit)
+	if err != nil {
 		return domain.Alert{}, false, err
 	}
-	_ = s.notifier.Notify(ctx, alert)
-	return alert, true, nil
+	if created {
+		_ = s.notifier.Notify(ctx, stored)
+	}
+	return stored, created, nil
 }
 
 func (s *AlertService) ScanCertificates(ctx context.Context, horizonDays int) ([]domain.Alert, error) {
@@ -78,23 +73,18 @@ func (s *AlertService) ScanCertificates(ctx context.Context, horizonDays int) ([
 		if err != nil {
 			return nil, err
 		}
-		stored, err := s.alerts.FindAlertByDeduplication(ctx, alert.Deduplication)
-		if err == nil {
-			result = append(result, stored)
-			continue
-		}
-		if !errors.Is(err, domain.ErrNotFound) {
-			return nil, err
-		}
 		audit, err := alertScanAudit(alert, now)
 		if err != nil {
 			return nil, err
 		}
-		if err := s.alerts.RecordAlertScan(ctx, alert, audit); err != nil {
+		stored, created, err := s.alerts.CommitAlertScan(ctx, alert, audit)
+		if err != nil {
 			return nil, err
 		}
-		_ = s.notifier.Notify(ctx, alert)
-		result = append(result, alert)
+		if created {
+			_ = s.notifier.Notify(ctx, stored)
+		}
+		result = append(result, stored)
 	}
 	return result, nil
 }

@@ -53,6 +53,7 @@ type CertificateRepository interface {
 type AlertRepository interface {
 	FindAlertByDeduplication(context.Context, string) (domain.Alert, error)
 	RecordAlertScan(context.Context, domain.Alert, domain.AuditEvent) error
+	CommitAlertScan(context.Context, domain.Alert, domain.AuditEvent) (domain.Alert, bool, error)
 	AcknowledgeAlert(context.Context, domain.Alert) error
 	ListOpenAlerts(context.Context, domain.PageRequest) (domain.Page[domain.Alert], error)
 }
