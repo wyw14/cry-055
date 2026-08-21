@@ -60,6 +60,27 @@ func (s *PlanService) Reschedule(ctx context.Context, id domain.ID, dueAt time.T
 	return plan, nil
 }
 
+func (s *PlanService) ApplyScheduleRule(ctx context.Context, id domain.ID, rule domain.ScheduleRule, lastQualifiedAt time.Time, expected domain.Version) (domain.CalibrationPlan, error) {
+	plan, err := s.plans.GetPlan(ctx, id)
+	if err != nil {
+		return domain.CalibrationPlan{}, err
+	}
+	application, changed, err := rule.Evaluate(plan, lastQualifiedAt, plan.DueAt)
+	if err != nil {
+		return domain.CalibrationPlan{}, err
+	}
+	if !changed {
+		return plan, nil
+	}
+	if err := plan.ApplySchedule(application, expected, s.clock.Now()); err != nil {
+		return domain.CalibrationPlan{}, err
+	}
+	if err := s.plans.UpdatePlan(context.Background(), plan, expected); err != nil {
+		return domain.CalibrationPlan{}, err
+	}
+	return plan, nil
+}
+
 func (s *PlanService) RefreshInstrumentStatus(ctx context.Context, instrumentID domain.ID, warningDays int) (domain.Instrument, error) {
 	instrument, err := s.instruments.GetInstrument(ctx, instrumentID)
 	if err != nil {

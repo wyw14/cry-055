@@ -15,16 +15,27 @@ const (
 )
 
 type CalibrationPlan struct {
-	ID           ID         `json:"id"`
-	InstrumentID ID         `json:"instrument_id"`
-	ItemID       ID         `json:"item_id"`
-	DueAt        time.Time  `json:"due_at"`
-	Status       PlanStatus `json:"status"`
-	AssignedTo   ID         `json:"assigned_to"`
-	ChangeReason string     `json:"change_reason,omitempty"`
-	Version      Version    `json:"version"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID                      ID         `json:"id"`
+	InstrumentID            ID         `json:"instrument_id"`
+	ItemID                  ID         `json:"item_id"`
+	DueAt                   time.Time  `json:"due_at"`
+	Status                  PlanStatus `json:"status"`
+	AssignedTo              ID         `json:"assigned_to"`
+	ChangeReason            string     `json:"change_reason,omitempty"`
+	ScheduleRuleID          ID         `json:"schedule_rule_id,omitempty"`
+	ScheduleRuleEffectiveAt time.Time  `json:"schedule_rule_effective_at,omitempty"`
+	Version                 Version    `json:"version"`
+	CreatedAt               time.Time  `json:"created_at"`
+	UpdatedAt               time.Time  `json:"updated_at"`
+}
+
+func (p *CalibrationPlan) ApplySchedule(application ScheduleApplication, expected Version, now time.Time) error {
+	if err := p.Reschedule(application.DueAt, application.Reason, expected, now); err != nil {
+		return err
+	}
+	p.ScheduleRuleID = application.RuleID
+	p.ScheduleRuleEffectiveAt = application.RuleEffectiveAt.UTC()
+	return nil
 }
 
 func NewPlan(instrumentID, itemID ID, dueAt time.Time, assignedTo ID, now time.Time) (CalibrationPlan, error) {
