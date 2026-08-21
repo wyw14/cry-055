@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: calibration
+      POSTGRES_USER: calibration
+      POSTGRES_PASSWORD: calibration
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  backend:
+    build:
+      context: .
+      args:
+        TARGETARCH: amd64
+    environment:
+      APP_ADDR: :8080
+      DATABASE_URL: postgres://calibration:calibration@postgres:5432/calibration?sslmode=disable
+      ATTACHMENT_ROOT: /var/lib/calibration/attachments
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    volumes:
+      - attachments:/var/lib/calibration/attachments
+volumes:
+  postgres-data:
+  attachments:

@@ -1,0 +1,14 @@
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
+import { createRouter, createWebHistory } from 'vue-router';
+import App from './App.vue';
+import LedgerView from './views/LedgerView.vue';
+import CalendarView from './views/CalendarView.vue';
+import ExecutionView from './views/ExecutionView.vue';
+import CertificateView from './views/CertificateView.vue';
+import NonconformanceView from './views/NonconformanceView.vue';
+import AlertView from './views/AlertView.vue';
+import HistoryView from './views/HistoryView.vue';
+import './style.css';
+const router = createRouter({ history: createWebHistory(), routes: [{ path: '/', component: LedgerView }, { path: '/calendar', component: CalendarView }, { path: '/executions', component: ExecutionView }, { path: '/certificates', component: CertificateView }, { path: '/nonconformances', component: NonconformanceView }, { path: '/alerts', component: AlertView }, { path: '/history', component: HistoryView }] });
+createApp(App).use(createPinia()).use(router).mount('#app');

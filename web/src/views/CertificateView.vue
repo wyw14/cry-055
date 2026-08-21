@@ -1,0 +1,2 @@
+﻿<script setup lang="ts">import{Download,FileBadge,Upload}from'@lucide/vue'</script><template><section><div class="page-title"><div><h1>证书中心</h1><p>管理校准证书、供应商资质、费用和有效期</p></div><button class="primary"><Upload :size="17"/>上传证书</button></div><div class="toolbar"><input placeholder="搜索证书号或仪器编号"><select><option>全部有效期</option><option>30 天内到期</option><option>已到期</option></select></div><div class="empty-state"><FileBadge :size="42"/><h2>暂无证书记录</h2><p>完成一次校准执行后可在此归档本地证书附件。</p><button class="quiet"><Download :size="16"/>导出证书清单</button></div></section></template>
+

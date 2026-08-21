@@ -1,0 +1,73 @@
+openapi: 3.0.3
+info:
+  title: 实验仪器校准与合格状态管理平台
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /laboratories:
+    post:
+      summary: 创建实验室
+      responses:
+        '201': {description: 已创建}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /calibration-items:
+    post:
+      summary: 创建校准项目
+      responses:
+        '201': {description: 已创建}
+  /instruments:
+    get:
+      summary: 分页查询仪器台账
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 1}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: sort, in: query, schema: {type: string, enum: [created_at, asset_number, next_due_at, status]}}
+      responses:
+        '200': {description: 仪器分页结果}
+    post:
+      summary: 登记仪器
+      responses:
+        '201': {description: 已创建}
+  /instruments/{instrumentID}/usage-checks:
+    post:
+      summary: 使用前校验
+      parameters:
+        - {name: instrumentID, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: 允许使用}
+        '423': {description: 仪器被阻止使用}
+  /plans:
+    post:
+      summary: 生成校准计划
+      responses:
+        '201': {description: 已创建}
+  /executions:
+    post:
+      summary: 记录校准执行结果
+      responses:
+        '201': {description: 已记录}
+  /nonconformances/{nonconformanceID}/restore:
+    post:
+      summary: 复检后恢复仪器
+      parameters:
+        - {name: nonconformanceID, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: 已恢复}
+        '403': {description: 需要质量负责人权限}
+components:
+  responses:
+    ValidationError:
+      description: 字段校验失败
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Error:
+      type: object
+      required: [code, message, field_errors, request_id]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        field_errors: {type: array, items: {type: object}}
+        request_id: {type: string}

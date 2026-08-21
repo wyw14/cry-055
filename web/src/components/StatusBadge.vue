@@ -1,0 +1,1 @@
+<script setup lang="ts">import type{InstrumentStatus}from'../types';defineProps<{status:InstrumentStatus}>();const labels:{[K in InstrumentStatus]:string}={pending:'待校准',qualified:'合格',due_soon:'即将到期',overdue:'逾期',unqualified:'不合格',disabled:'禁用',reinspection:'复检中'}</script><template><span class="badge" :class="`badge-${status}`">{{labels[status]}}</span></template>
