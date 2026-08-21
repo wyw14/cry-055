@@ -79,8 +79,14 @@ func (e RestorationEvidence) Authorize(actor Actor, comment string, expected Ver
 	if comment == "" {
 		return RestorationAuthorization{}, NewValidationError("comment", "restoration comment is required")
 	}
-	if !e.ImpactRecorded || !e.RetestRequested {
-		return RestorationAuthorization{}, ErrInvalidTransition
+	// Restoration is authorized only once an independent, qualified retest has
+	// been attached and persisted (status restoration_review). RetestRequested
+	// alone is insufficient: it marks that a retest was asked for, not that the
+	// reviewed qualified evidence landed in the store. Authorizing before the
+	// evidence is attached lets a concurrent restore close the case and the
+	// pending retest then loses to a version conflict, so require RestorationPending.
+	if !e.ImpactRecorded || !e.RestorationPending {
+		return RestorationAuthorization{}, ErrUnauthorized
 	}
 	return RestorationAuthorization{
 		CaseVersion: e.CaseVersion,
@@ -94,10 +100,14 @@ func (n *Nonconformance) ApplyRestoration(authorization RestorationAuthorization
 	if n.Version != authorization.CaseVersion {
 		return ErrConflict
 	}
-	if n.Status != NCAwaitingRetest && n.Status != NCRestorationReview {
+	// Restoration closes the case only after independent, qualified retest
+	// evidence has been attached and persisted (restoration_review). awaiting_retest
+	// means a retest was requested but no reviewed qualified evidence landed yet,
+	// so closing then is not permitted — a concurrent attach would lose to a
+	// version conflict and the evidence would be silently dropped.
+	if n.Status != NCRestorationReview || n.RetestID != authorization.RetestID || n.RetestID.Empty() {
 		return ErrInvalidTransition
 	}
-	n.RetestID = authorization.RetestID
 	n.RestoreActorID = authorization.ActorID
 	n.RestoreComment = authorization.Comment
 	n.Status = NCClosed
