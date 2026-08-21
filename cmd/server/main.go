@@ -38,7 +38,7 @@ func main() {
 	}
 	systemClock := clock.System{}
 	notifier := localnotify.New()
-	catalog := application.NewCatalogService(store, store, systemClock)
+	catalog := application.NewCatalogService(store, store, store, store, systemClock)
 	instruments := application.NewInstrumentService(store, store, store, systemClock)
 	plans := application.NewPlanService(store, store, systemClock)
 	executions := application.NewExecutionService(store, store, store, store, systemClock)

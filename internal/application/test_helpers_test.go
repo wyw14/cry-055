@@ -39,6 +39,16 @@ func newFixture(t interface{ Fatal(...any) }) fixture {
 	if err := store.CreateInstrument(ctx, instrument); err != nil {
 		t.Fatal(err)
 	}
+	standard, err := domain.NewInstrument(domain.InstrumentInput{LaboratoryID: lab.ID, AssetNumber: "STD-001", Name: "Pressure Standard", Model: "REF-100", SerialNumber: "RS-100", OwnerID: "metrology", Criticality: domain.CriticalityCritical}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standard.ID = "standard"
+	standard.Status = domain.StatusQualified
+	standard.NextDueAt = now.AddDate(1, 0, 0)
+	if err := store.CreateInstrument(ctx, standard); err != nil {
+		t.Fatal(err)
+	}
 	item, err := domain.NewCalibrationItem("PRESS", "Pressure accuracy", 180, 30, 0.5, "kPa", "standard", []string{"PG-10"}, now)
 	if err != nil {
 		t.Fatal(err)

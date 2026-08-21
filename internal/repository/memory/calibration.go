@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"sort"
+	"strings"
 
 	"github.com/wyw14/cry-055/internal/domain"
 )
@@ -27,6 +28,18 @@ func (s *Store) GetItem(_ context.Context, id domain.ID) (domain.CalibrationItem
 		return domain.CalibrationItem{}, domain.ErrNotFound
 	}
 	return item, nil
+}
+
+func (s *Store) GetItemByCode(_ context.Context, code string) (domain.CalibrationItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	code = strings.ToUpper(strings.TrimSpace(code))
+	for _, item := range s.items {
+		if item.Code == code {
+			return item, nil
+		}
+	}
+	return domain.CalibrationItem{}, domain.ErrNotFound
 }
 
 func (s *Store) CreatePlan(_ context.Context, plan domain.CalibrationPlan) error {

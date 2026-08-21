@@ -70,3 +70,13 @@ func (c CalibrationItem) AppliesTo(model string) bool {
 	}
 	return false
 }
+
+func (c CalibrationItem) ValidateReferenceStandard(standard Instrument, _ time.Time) error {
+	if standard.ID != c.ReferenceStandardID {
+		return NewValidationError("reference_standard_id", "reference standard does not match calibration item")
+	}
+	if standard.Status != StatusQualified {
+		return NewValidationError("reference_standard_id", "reference standard is not qualified")
+	}
+	return nil
+}

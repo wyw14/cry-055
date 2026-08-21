@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 
 	"github.com/wyw14/cry-055/internal/domain"
 )
@@ -17,6 +18,14 @@ func (s *Store) CreateItem(ctx context.Context, value domain.CalibrationItem) er
 func (s *Store) GetItem(ctx context.Context, id domain.ID) (domain.CalibrationItem, error) {
 	var data []byte
 	err := s.queryRow(ctx, `SELECT data FROM calibration_items WHERE id=$1`, id).Scan(&data)
+	if err != nil {
+		return domain.CalibrationItem{}, translate(err)
+	}
+	return decode[domain.CalibrationItem](data)
+}
+func (s *Store) GetItemByCode(ctx context.Context, code string) (domain.CalibrationItem, error) {
+	var data []byte
+	err := s.queryRow(ctx, `SELECT data FROM calibration_items WHERE code=$1`, strings.ToUpper(strings.TrimSpace(code))).Scan(&data)
 	if err != nil {
 		return domain.CalibrationItem{}, translate(err)
 	}

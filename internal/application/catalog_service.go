@@ -21,11 +21,12 @@ type CalibrationItemInput struct {
 type CatalogService struct {
 	labs         LaboratoryRepository
 	calibrations CalibrationRepository
+	instruments  InstrumentRepository
 	clock        Clock
 }
 
-func NewCatalogService(labs LaboratoryRepository, calibrations CalibrationRepository, clock Clock) *CatalogService {
-	return &CatalogService{labs: labs, calibrations: calibrations, clock: clock}
+func NewCatalogService(labs LaboratoryRepository, calibrations CalibrationRepository, instruments InstrumentRepository, _ TransactionManager, clock Clock) *CatalogService {
+	return &CatalogService{labs: labs, calibrations: calibrations, instruments: instruments, clock: clock}
 }
 func (s *CatalogService) CreateLaboratory(ctx context.Context, code, name, location string, managerID domain.ID) (domain.Laboratory, error) {
 	value, err := domain.NewLaboratory(code, name, location, managerID, s.clock.Now())
@@ -43,6 +44,13 @@ func (s *CatalogService) CreateCalibrationItem(ctx context.Context, input Calibr
 		return domain.CalibrationItem{}, err
 	}
 	if err := s.calibrations.CreateItem(ctx, value); err != nil {
+		return domain.CalibrationItem{}, err
+	}
+	standard, err := s.instruments.GetInstrument(ctx, input.ReferenceStandardID)
+	if err != nil {
+		return domain.CalibrationItem{}, err
+	}
+	if err := value.ValidateReferenceStandard(standard, s.clock.Now()); err != nil {
 		return domain.CalibrationItem{}, err
 	}
 	return value, nil

@@ -33,7 +33,7 @@ func testRouter(t *testing.T) (http.Handler, *memory.Store, domain.Instrument) {
 		t.Fatal(err)
 	}
 	fixed := clock.Fixed{Value: now}
-	catalog := application.NewCatalogService(store, store, fixed)
+	catalog := application.NewCatalogService(store, store, store, store, fixed)
 	instruments := application.NewInstrumentService(store, store, store, fixed)
 	plans := application.NewPlanService(store, store, fixed)
 	executions := application.NewExecutionService(store, store, store, store, fixed)

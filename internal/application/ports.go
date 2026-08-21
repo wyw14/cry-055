@@ -28,6 +28,7 @@ type LaboratoryRepository interface {
 type CalibrationRepository interface {
 	CreateItem(context.Context, domain.CalibrationItem) error
 	GetItem(context.Context, domain.ID) (domain.CalibrationItem, error)
+	GetItemByCode(context.Context, string) (domain.CalibrationItem, error)
 	CreatePlan(context.Context, domain.CalibrationPlan) error
 	UpdatePlan(context.Context, domain.CalibrationPlan, domain.Version) error
 	GetPlan(context.Context, domain.ID) (domain.CalibrationPlan, error)
