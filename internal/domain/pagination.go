@@ -1,6 +1,9 @@
 package domain
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 type PageRequest struct {
 	Page    int
@@ -8,6 +11,7 @@ type PageRequest struct {
 	Sort    string
 	Desc    bool
 	Filters map[string]string
+	AsOf    time.Time
 }
 
 func (p PageRequest) Normalize(allowedSort, allowedFilters map[string]struct{}) (PageRequest, error) {

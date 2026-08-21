@@ -90,6 +90,9 @@ func (s *InstrumentService) List(ctx context.Context, page domain.PageRequest) (
 	if err != nil {
 		return domain.Page[domain.Instrument]{}, err
 	}
+	if normalized.Filters["status"] == "" {
+		normalized.AsOf = s.clock.Now().UTC()
+	}
 	return s.instruments.ListInstruments(ctx, normalized)
 }
 

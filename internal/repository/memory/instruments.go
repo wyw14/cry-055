@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/wyw14/cry-055/internal/domain"
 )
@@ -86,6 +87,7 @@ func (s *Store) ListInstruments(_ context.Context, request domain.PageRequest) (
 	s.mu.RLock()
 	items := make([]domain.Instrument, 0, len(s.instruments))
 	for _, item := range s.instruments {
+		item = persistedInstrumentAt(item, request.AsOf)
 		if !matchInstrument(item, request.Filters) {
 			continue
 		}
@@ -110,6 +112,13 @@ func (s *Store) ListInstruments(_ context.Context, request domain.PageRequest) (
 		return less
 	})
 	return paginate(items, request.Page, request.Size), nil
+}
+
+func persistedInstrumentAt(item domain.Instrument, asOf time.Time) domain.Instrument {
+	if !asOf.IsZero() && !item.NextDueAt.IsZero() {
+		item.Status = domain.DerivedStatus(item.Status, asOf, item.NextDueAt, 30)
+	}
+	return item
 }
 
 func matchInstrument(item domain.Instrument, filters map[string]string) bool {

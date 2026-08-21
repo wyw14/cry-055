@@ -39,9 +39,9 @@ func parseVersion(c *gin.Context) (domain.Version, error) {
 	}
 	return domain.Version(value), nil
 }
-func pageRequest(c *gin.Context) domain.PageRequest {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+func pageRequest(c *gin.Context) (domain.PageRequest, error) {
+	page := queryIntOrDefault(c, "page", 1)
+	size := queryIntOrDefault(c, "size", 20)
 	sortField := c.DefaultQuery("sort", "created_at")
 	desc := strings.EqualFold(c.Query("order"), "desc")
 	filters := map[string]string{}
@@ -50,7 +50,15 @@ func pageRequest(c *gin.Context) domain.PageRequest {
 			filters[strings.TrimSuffix(strings.TrimPrefix(key, "filter["), "]")] = values[0]
 		}
 	}
-	return domain.PageRequest{Page: page, Size: size, Sort: sortField, Desc: desc, Filters: filters}
+	return domain.PageRequest{Page: page, Size: size, Sort: sortField, Desc: desc, Filters: filters}, nil
+}
+
+func queryIntOrDefault(c *gin.Context, name string, fallback int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(c.Query(name)))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 func requireParam(c *gin.Context, name string) (domain.ID, error) {
 	value := strings.TrimSpace(c.Param(name))

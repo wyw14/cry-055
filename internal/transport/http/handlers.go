@@ -87,7 +87,12 @@ func (h *handlers) registerInstrument(c *gin.Context) {
 	c.JSON(http.StatusCreated, value)
 }
 func (h *handlers) listInstruments(c *gin.Context) {
-	value, err := h.services.Instruments.List(c.Request.Context(), pageRequest(c))
+	request, err := pageRequest(c)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	value, err := h.services.Instruments.List(c.Request.Context(), request)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -351,7 +356,12 @@ func (h *handlers) restoreInstrument(c *gin.Context) {
 	c.JSON(http.StatusOK, value)
 }
 func (h *handlers) listAlerts(c *gin.Context) {
-	value, err := h.services.Alerts.List(c.Request.Context(), pageRequest(c))
+	request, err := pageRequest(c)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	value, err := h.services.Alerts.List(c.Request.Context(), request)
 	if err != nil {
 		writeError(c, err)
 		return

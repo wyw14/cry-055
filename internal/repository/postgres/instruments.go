@@ -2,8 +2,9 @@ package postgres
 
 import (
 	"context"
-	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/wyw14/cry-055/internal/domain"
 )
@@ -71,24 +72,12 @@ func (s *Store) GetInstrumentByAssetNumber(ctx context.Context, asset string) (d
 }
 
 func (s *Store) ListInstruments(ctx context.Context, request domain.PageRequest) (domain.Page[domain.Instrument], error) {
-	where, args := instrumentWhere(request.Filters)
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM instruments`+where, args...).Scan(&total); err != nil {
-		return domain.Page[domain.Instrument]{}, translate(err)
-	}
-	columns := map[string]string{"created_at": "created_at", "asset_number": "asset_number", "next_due_at": "next_due_at", "status": "status"}
-	direction := "ASC"
-	if request.Desc {
-		direction = "DESC"
-	}
-	args = append(args, request.Size, (request.Page-1)*request.Size)
-	query := fmt.Sprintf(`SELECT data FROM instruments%s ORDER BY %s %s NULLS LAST LIMIT $%d OFFSET $%d`, where, columns[request.Sort], direction, len(args)-1, len(args))
-	rows, err := s.query(ctx, query, args...)
+	rows, err := s.query(ctx, `SELECT data FROM instruments`)
 	if err != nil {
 		return domain.Page[domain.Instrument]{}, translate(err)
 	}
 	defer rows.Close()
-	items := make([]domain.Instrument, 0, request.Size)
+	items := make([]domain.Instrument, 0)
 	for rows.Next() {
 		var data []byte
 		if err := rows.Scan(&data); err != nil {
@@ -98,25 +87,55 @@ func (s *Store) ListInstruments(ctx context.Context, request domain.PageRequest)
 		if err != nil {
 			return domain.Page[domain.Instrument]{}, err
 		}
-		items = append(items, value)
-	}
-	return domain.Page[domain.Instrument]{Items: items, Page: request.Page, Size: request.Size, Total: total}, rows.Err()
-}
-
-func instrumentWhere(filters map[string]string) (string, []any) {
-	parts := make([]string, 0, len(filters))
-	args := make([]any, 0, len(filters))
-	columns := map[string]string{"laboratory_id": "laboratory_id", "status": "status", "criticality": "criticality", "owner_id": "data->>'owner_id'"}
-	for _, key := range []string{"laboratory_id", "status", "criticality", "owner_id"} {
-		if value := filters[key]; value != "" {
-			args = append(args, value)
-			parts = append(parts, fmt.Sprintf("%s=$%d", columns[key], len(args)))
+		value = persistedPostgresInstrumentAt(value, request.AsOf)
+		if persistedInstrumentMatches(value, request.Filters) {
+			items = append(items, value)
 		}
 	}
-	if len(parts) == 0 {
-		return "", args
+	if err := rows.Err(); err != nil {
+		return domain.Page[domain.Instrument]{}, err
 	}
-	return " WHERE " + strings.Join(parts, " AND "), args
+	sort.SliceStable(items, func(left, right int) bool {
+		less := false
+		switch request.Sort {
+		case "asset_number":
+			less = items[left].AssetNumber < items[right].AssetNumber
+		case "next_due_at":
+			less = items[left].NextDueAt.Before(items[right].NextDueAt)
+		case "status":
+			less = items[left].Status < items[right].Status
+		default:
+			less = items[left].CreatedAt.Before(items[right].CreatedAt)
+		}
+		if request.Desc {
+			return !less
+		}
+		return less
+	})
+	total := len(items)
+	start := (request.Page - 1) * request.Size
+	if start > total {
+		start = total
+	}
+	end := start + request.Size
+	if end > total {
+		end = total
+	}
+	return domain.Page[domain.Instrument]{Items: items[start:end], Page: request.Page, Size: request.Size, Total: total}, nil
+}
+
+func persistedPostgresInstrumentAt(item domain.Instrument, asOf time.Time) domain.Instrument {
+	if !asOf.IsZero() && !item.NextDueAt.IsZero() {
+		item.Status = domain.DerivedStatus(item.Status, asOf, item.NextDueAt, 30)
+	}
+	return item
+}
+
+func persistedInstrumentMatches(item domain.Instrument, filters map[string]string) bool {
+	return (filters["laboratory_id"] == "" || string(item.LaboratoryID) == filters["laboratory_id"]) &&
+		(filters["status"] == "" || string(item.Status) == filters["status"]) &&
+		(filters["criticality"] == "" || string(item.Criticality) == filters["criticality"]) &&
+		(filters["owner_id"] == "" || string(item.OwnerID) == filters["owner_id"])
 }
 
 func nullableTime(value interface{ IsZero() bool }) any {

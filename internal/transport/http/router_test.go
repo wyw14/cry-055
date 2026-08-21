@@ -92,3 +92,78 @@ func TestInstrumentListRejectsUnknownFilter(t *testing.T) {
 		t.Fatalf("expected 422, got %d: %s", response.Code, response.Body.String())
 	}
 }
+
+func TestInstrumentListFiltersEffectiveStatusBeforePaginationAndReturnsStableErrors(t *testing.T) {
+	router, store, first := testRouter(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 21, 8, 0, 0, 0, time.UTC)
+	second, err := domain.NewInstrument(domain.InstrumentInput{
+		LaboratoryID: first.LaboratoryID,
+		AssetNumber:  "LAB-002",
+		Name:         "Temperature probe",
+		Model:        "TP-20",
+		OwnerID:      "owner",
+		Criticality:  domain.CriticalityMajor,
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.Status = domain.StatusQualified
+	second.NextDueAt = now.Add(-2 * time.Hour)
+	if err := store.CreateInstrument(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("effective status is filtered before pagination", func(t *testing.T) {
+		listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/instruments?page=2&size=1&sort=asset_number&order=asc&filter%5Bstatus%5D=overdue", nil)
+		listRequest.Header.Set("X-Actor-ID", "operator")
+		listResponse := httptest.NewRecorder()
+		router.ServeHTTP(listResponse, listRequest)
+		if listResponse.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", listResponse.Code, listResponse.Body.String())
+		}
+		var page domain.Page[domain.Instrument]
+		if err := json.Unmarshal(listResponse.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		if page.Page != 2 || page.Size != 1 || page.Total != 2 {
+			t.Fatalf("unexpected page metadata: page=%d size=%d total=%d", page.Page, page.Size, page.Total)
+		}
+		if len(page.Items) != 1 || page.Items[0].AssetNumber != "LAB-002" || page.Items[0].Status != domain.StatusOverdue {
+			t.Fatalf("expected second overdue instrument, got %+v", page.Items)
+		}
+	})
+
+	t.Run("invalid pagination has a stable error contract", func(t *testing.T) {
+		errorRequest := httptest.NewRequest(http.MethodGet, "/api/v1/instruments?page=not-a-number&size=1&sort=asset_number&filter%5Bstatus%5D=overdue", nil)
+		errorRequest.Header.Set("X-Actor-ID", "operator")
+		errorRequest.Header.Set("X-Request-ID", "list-contract-009")
+		errorResponseRecorder := httptest.NewRecorder()
+		router.ServeHTTP(errorResponseRecorder, errorRequest)
+		if errorResponseRecorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected 422, got %d: %s", errorResponseRecorder.Code, errorResponseRecorder.Body.String())
+		}
+		var problem errorResponse
+		if err := json.Unmarshal(errorResponseRecorder.Body.Bytes(), &problem); err != nil {
+			t.Fatal(err)
+		}
+		if problem.Code != "VALIDATION_ERROR" || problem.Message != "request validation failed" {
+			t.Fatalf("unexpected stable error: %+v", problem)
+		}
+		if problem.RequestID != "list-contract-009" || errorResponseRecorder.Header().Get("X-Request-ID") != problem.RequestID {
+			t.Fatalf("request id mismatch: header=%q body=%q", errorResponseRecorder.Header().Get("X-Request-ID"), problem.RequestID)
+		}
+		if len(problem.FieldErrors) != 1 || problem.FieldErrors[0].Field != "page" {
+			t.Fatalf("expected page field error, got %+v", problem.FieldErrors)
+		}
+	})
+
+	t.Run("listing is read only", func(t *testing.T) {
+		for _, instrumentID := range []domain.ID{first.ID, second.ID} {
+			audits, err := store.ListAudit(ctx, "instrument", instrumentID)
+			if err != nil || len(audits) != 0 {
+				t.Fatalf("list must not append audits for %s: audits=%v err=%v", instrumentID, audits, err)
+			}
+		}
+	})
+}
